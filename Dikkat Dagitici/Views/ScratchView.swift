@@ -4,7 +4,10 @@
 //
 
 import SwiftUI
+
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - SwiftUI Shell
 
@@ -24,9 +27,9 @@ struct ScratchView: View {
         "Bugün de\nyapabilirsin! 🦋",
     ]
 
-    private let cardColor    = Color(red: 0.88, green: 0.82, blue: 0.97)
-    private let accentColor  = Color(red: 0.55, green: 0.44, blue: 0.78)
-    private let bgColor      = Color(red: 0.96, green: 0.94, blue: 0.99)
+    private let cardColor   = Color(red: 0.88, green: 0.82, blue: 0.97)
+    private let accentColor = Color(red: 0.55, green: 0.44, blue: 0.78)
+    private let bgColor     = Color(red: 0.96, green: 0.94, blue: 0.99)
 
     var body: some View {
         ZStack {
@@ -50,27 +53,19 @@ struct ScratchView: View {
                             .opacity(
                                 isRevealed
                                     ? 1.0
-                                    : min(1.0, (revealPercent / 0.45))
+                                    : min(1.0, revealPercent / 0.45)
                             )
                     }
                     .overlay {
                         if !isRevealed {
-                            ScratchableCanvas(
-                                onReveal: { pct in revealPercent = pct },
-                                onComplete: {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
-                                        isRevealed = true
-                                    }
-                                    HapticManager.shared.scratchComplete()
-                                }
-                            )
-                            .id(resetID)
-                            .clipShape(RoundedRectangle(cornerRadius: 28))
+                            scratchLayer
+                                .id(resetID)
+                                .clipShape(RoundedRectangle(cornerRadius: 28))
                         }
                     }
                     .shadow(color: cardColor.opacity(0.5), radius: 16, x: 0, y: 8)
 
-                // Progress hint
+                // Progress bar
                 if !isRevealed {
                     ProgressView(value: revealPercent)
                         .tint(accentColor.opacity(0.6))
@@ -102,9 +97,36 @@ struct ScratchView: View {
             }
         }
     }
+
+    // Scratch overlay — UIKit on iOS/visionOS, tap-to-reveal on macOS
+    @ViewBuilder
+    private var scratchLayer: some View {
+        #if canImport(UIKit)
+        ScratchableCanvas(
+            onReveal: { pct in revealPercent = pct },
+            onComplete: {
+                withAnimation(.easeInOut(duration: 0.4)) { isRevealed = true }
+                HapticManager.shared.scratchComplete()
+            }
+        )
+        #else
+        ZStack {
+            RoundedRectangle(cornerRadius: 28)
+                .fill(Color(red: 0.68, green: 0.62, blue: 0.80))
+            Text("Ortaya çıkarmak için tıkla")
+                .font(.system(.callout, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.4)) { isRevealed = true }
+        }
+        #endif
+    }
 }
 
-// MARK: - UIViewRepresentable Bridge
+// MARK: - UIKit Implementation (iOS / visionOS only)
+
+#if canImport(UIKit)
 
 struct ScratchableCanvas: UIViewRepresentable {
 
@@ -124,8 +146,6 @@ struct ScratchableCanvas: UIViewRepresentable {
     }
 }
 
-// MARK: - UIView Scratch Layer
-
 final class ScratchUIView: UIView {
 
     var onReveal:   ((CGFloat) -> Void)?
@@ -136,7 +156,7 @@ final class ScratchUIView: UIView {
 
     private var scratchedCells = Set<String>()
     private var totalCells     = 0
-    private let gridSize: CGFloat = 22
+    private let gridSize: CGFloat      = 22
     private let scratchRadius: CGFloat = 26
 
     private var didComplete    = false
@@ -168,12 +188,10 @@ final class ScratchUIView: UIView {
         totalCells = Int(ceil(bounds.width / gridSize)) * Int(ceil(bounds.height / gridSize))
 
         let renderer = UIGraphicsImageRenderer(size: bounds.size)
-        currentImage = renderer.image { ctx in
-            // Base fill
+        currentImage = renderer.image { _ in
             UIColor(red: 0.68, green: 0.62, blue: 0.80, alpha: 1).setFill()
             UIBezierPath(rect: bounds).fill()
 
-            // Subtle stipple texture
             UIColor(red: 0.63, green: 0.57, blue: 0.75, alpha: 0.5).setFill()
             var x: CGFloat = 4
             while x < bounds.width {
@@ -208,7 +226,6 @@ final class ScratchUIView: UIView {
         }
         imageView.image = currentImage
 
-        // Coverage tracking
         let col = Int(point.x / gridSize)
         let row = Int(point.y / gridSize)
         let key = "\(col),\(row)"
@@ -244,6 +261,8 @@ final class ScratchUIView: UIView {
         }
     }
 }
+
+#endif // canImport(UIKit)
 
 #Preview {
     ScratchView()
